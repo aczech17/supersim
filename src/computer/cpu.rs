@@ -2,17 +2,18 @@ enum CPUPhase
 {
     Fetch,
     DecodeAndExecute,
-    Memory,
+    WriteBack,
 }
 
+#[derive(Copy, Clone)]
 pub(super) struct MemoryBuffer
 {
-    address: u32,
-    data: u32,
-    data_size: u8,
-    store: bool,
-    write_back_register: u8,
-    sign_extended: bool,
+    pub(super) address: u32,
+    pub(super) data: u32,
+    pub(super) data_size: u8,
+    pub(super) store: bool,
+    pub(super) write_back_register: u8,
+    pub(super) sign_extended: bool,
 }
 
 pub(super) struct CPU
@@ -61,6 +62,135 @@ impl CPU
             1..=31 => self.int_reg[reg_num] = val,
             _ => panic!("Bad register number"),
         };
+    }
+
+    pub(super) fn tick(&mut self, data: u32) -> MemoryBuffer
+    {
+        match self.phase
+        {
+            CPUPhase::Fetch =>
+            {
+                self.memory_buffer = MemoryBuffer
+                {
+                    address: self.pc,
+                    data: 0,
+                    data_size: 4,
+                    store: false,
+                    write_back_register: 0,
+                    sign_extended: false,
+                };
+                self.pc += 4;
+                self.phase = CPUPhase::DecodeAndExecute;
+            }
+            CPUPhase::DecodeAndExecute =>
+            {
+                self.decode_and_execute(data);
+                if self.memory_buffer.write_back_register == 0
+                {
+                    self.memory_buffer.data_size = 0;
+                }
+                self.phase = CPUPhase::WriteBack;
+            }
+            CPUPhase::WriteBack =>
+            {
+                self.memory_buffer.data = data; // save data taken from ram
+                self.write_back();
+                self.memory_buffer.data_size = 0; // reset the buffer
+                self.phase = CPUPhase::Fetch;
+            }
+        }
+
+        self.memory_buffer
+    }
+
+    fn decode_and_execute(&mut self, instruction: u32)
+    {
+        let opcode = instruction >> 26;
+        let rs = ((instruction >> 21) & 0b11111) as u8;
+        let rt = ((instruction >> 16) & 0b11111) as u8;
+        let rd = ((instruction >> 11) & 0b11111) as u8;
+        let shamt = ((instruction >> 6) & 0b11111) as u8;
+        let funct = (instruction & 0b111111) as u8;
+        let imm = (instruction & 0xFFFF) as u16;
+        let address = instruction & 0x3FFFFFF;
+
+        match (opcode, funct)
+        {
+            (0, 0) => self.sll(rd, rt, shamt),
+            (0, 2) => self.srl(rd, rt, shamt),
+            (0, 3) => self.sra(rd, rt, shamt),
+            (0, 4) => self.sllv(rd, rt, rs),
+            (0, 6) => self.srlv(rd, rt, rs),
+            (0, 7) => self.srav(rd, rt, rs),
+            (0, 8) => self.jr(rs),
+            (0, 9) => self.jalr(rd, rs),
+            (0, 12) => self.syscall(),
+            (0, 16) => self.mfhi(rd),
+            (0, 17) => self.mthi(rs),
+            (0, 18) => self.mflo(rd),
+            (0, 19) => self.mtlo(rs),
+            (0, 24) => self.mult(rs, rt),
+            (0, 25) => self.multu(rs, rt),
+            (0, 26) => self.div(rs, rt),
+            (0, 27) => self.divu(rs, rt),
+            (0, 32) => self.add(rd, rs, rt),
+            (0, 33) => self.addu(rd, rs, rt),
+            (0, 34) => self.sub(rd, rs, rt),
+            (0, 35) => self.subu(rd, rs, rt),
+            (0, 36) => self.and(rd, rs, rt),
+            (0, 37) => self.or(rd, rs, rt),
+            (0, 38) => self.xor(rd, rs, rt),
+            (0, 39) => self.nor(rd, rs, rt),
+            (0, 42) => self.slt(rd, rs, rt),
+            (0, 43) => self.sltu(rd, rs, rt),
+            (2, _) => self.j(address),
+            (3, _) => self.jal(address),
+            (4, _) => self.beq(rs, rt, imm),
+            (5, _) => self.bne(rs, rt, imm),
+            (6, _) => self.blez(rs, imm),
+            (7, _) => self.bgtz(rs, imm),
+            (8, _) => self.addi(rt, rs, imm),
+            (9, _) => self.addiu(rt, rs, imm),
+            (10, _) => self.slti(rt, rs, imm),
+            (11, _) => self.sltiu(rt, rs, imm),
+            (12, _) => self.andi(rt, rs, imm),
+            (13, _) => self.ori(rt, rs, imm),
+            (14, _) => self.xori(rt, rs, imm),
+            (15, _) => self.lui(rt, imm),
+            (32, _) => self.lb(rt, rs, imm),
+            (33, _) => self.lh(rt, rs, imm),
+            (34, _) => self.lw(rt, rs, imm),
+            (36, _) => self.lbu(rt, rs, imm),
+            (37, _) => self.lhu(rt, rs, imm),
+            (40, _) => self.sb(rt, rs, imm),
+            (41, _) => self.sh(rt, rs, imm),
+            (43, _) => self.sw(rt, rs, imm),
+            _ => panic!("Bad instruction"),
+        }
+    }
+
+    fn write_back(&mut self)
+    {
+        if self.memory_buffer.write_back_register == 0
+        {
+            return;
+        }
+
+        let data = self.memory_buffer.data;
+        let result = if !self.memory_buffer.sign_extended {data}
+        else
+        {
+            match self.memory_buffer.data_size
+            {
+                4 => data,
+                2 => (data & 0xFFFF) as u16 as i16 as i32 as u32,
+                1 => (data & 0xFF) as u8 as i8 as i32 as u32,
+                _ => panic!("Bad data size"),
+            }
+        };
+
+        let register = self.memory_buffer.write_back_register;
+        self.write_to_reg(register, result);
     }
 }
 
@@ -131,7 +261,7 @@ impl CPU // opcodes
         self.pc = self.int_reg[rs as usize];
     }
 
-    fn syscall()
+    fn syscall(&mut self)
     {
         // TODO
     }
