@@ -1,27 +1,31 @@
 use crate::computer::cpu::CPU;
 use crate::computer::memory::Memory;
+use crate::computer::video::Video;
 
 pub mod cpu;
 mod memory;
+mod video;
 
 pub struct Computer
 {
     cpu: CPU,
     ram: Memory,
+    video: Video,
 }
 
 impl Computer
 {
-    pub fn new(memory_size: usize) -> Computer
+    pub fn new(memory_size: usize, display_width: usize, display_height: usize) -> Computer
     {
         Computer
         {
             cpu: CPU::new(),
             ram: Memory::new(memory_size),
+            video: Video::new(display_width, display_height, 0),
         }
     }
 
-    fn step(&mut self)
+    fn cpu_step(&mut self)
     {
         // fetch
         let mem_request = self.cpu.tick(0);
@@ -49,7 +53,8 @@ impl Computer
     {
         loop
         {
-            self.step();
+            self.cpu_step();
+            self.video.display(&self.ram);
         }
     }
 }

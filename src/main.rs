@@ -6,6 +6,6 @@ fn main()
 {
     println!("Hello, world!");
 
-    let mut computer = Computer::new(u32::MAX as usize);
+    let mut computer = Computer::new(1024 * 1024 * 1024, 800, 600);
     computer.run();
 }
