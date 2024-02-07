@@ -93,8 +93,11 @@ impl CPU
             }
             CPUPhase::WriteBack =>
             {
-                self.memory_buffer.data = data; // save data taken from ram
-                self.write_back();
+                if self.memory_buffer.data_size > 0
+                {
+                    self.memory_buffer.data = data; // save data taken from ram
+                    self.write_back();
+                }
                 self.memory_buffer.data_size = 0; // reset the buffer
                 self.phase = CPUPhase::Fetch;
             }
@@ -171,11 +174,6 @@ impl CPU
 
     fn write_back(&mut self)
     {
-        if self.memory_buffer.write_back_register == 0
-        {
-            return;
-        }
-
         let data = self.memory_buffer.data;
         let result = if !self.memory_buffer.sign_extended {data}
         else
