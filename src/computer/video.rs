@@ -15,7 +15,7 @@ impl Video
         Video
         {
             vram_start,
-            vram_size: width * height * 3,
+            vram_size: width * height * 4,
             window: Window::new("super emulator kurwo", width, height, WindowOptions::default())
                 .unwrap(),
         }
@@ -25,18 +25,12 @@ impl Video
     {
         let start = self.vram_start;
         let end = self.vram_start + self.vram_size;
-        let mut buffer = vec![0; self.vram_size];
+        let mut buffer = Vec::new();
 
-        for addr in start..end
+        for addr in (start..end).step_by(4)
         {
-            let (r, g, b) = (
-                memory.read_data(addr as u32, 1),
-                memory.read_data((addr + 1) as u32, 1),
-                memory.read_data((addr + 2) as u32, 1)
-            );
-
-            let color_val = (r << 16) | (g << 8) | b;
-            buffer.push(color_val);
+            let pixel = memory.read_data(addr as u32, 4);
+            buffer.push(pixel);
         }
 
         let (width, height) = self.window.get_size();
