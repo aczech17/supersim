@@ -1,5 +1,6 @@
 use crate::computer::cpu::CPU;
 use crate::computer::memory::Memory;
+use crate::memory_layout::MemoryLayout;
 use crate::computer::video::Video;
 
 pub mod cpu;
@@ -15,13 +16,29 @@ pub struct Computer
 
 impl Computer
 {
-    pub fn new(memory_size: usize, display_width: usize, display_height: usize) -> Computer
+    pub fn new(memory_size: usize, display_width: usize, display_height: usize,
+        memory_layout: MemoryLayout) -> Computer
     {
+        let mut ram = Memory::new(memory_size);
+
+        let program_start = memory_layout.program.start;
+        let loop_instruction: u32 = 0b0000_1000_0000_0000_0000_0000_0000_0000;
+        ram.write_data(program_start, loop_instruction, 4);
+
+        let vram_start = memory_layout.video_ram.start;
+        //
+        // println!("filling vram");
+        // for address in (vram_start..memory_size).step_by(4)
+        // {
+        //     ram.write_data(address as u32, 0xFF_00_00_FF, 4);
+        // }
+        // println!("vram filled");
+
         Computer
         {
             cpu: CPU::new(),
-            ram: Memory::new(memory_size),
-            video: Video::new(display_width, display_height, 0),
+            ram,
+            video: Video::new(display_width, display_height, vram_start),
         }
     }
 
