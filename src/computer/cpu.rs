@@ -108,6 +108,7 @@ impl CPU
 
     fn decode_and_execute(&mut self, instruction: u32)
     {
+
         let opcode = instruction >> 26;
         let rs = ((instruction >> 21) & 0b11111) as u8;
         let rt = ((instruction >> 16) & 0b11111) as u8;
@@ -457,7 +458,7 @@ impl CPU // opcodes
     fn j(&mut self, address: u32)
     {
         let address = address & 0x_03_FF_FF_FF; // lower 26 bits
-        let upper = self.pc << 28;
+        let upper = self.pc & 0xF0000000; // upper 4 bits
         let lower = address << 2;
 
         let new_address = upper | lower;
