@@ -3,19 +3,19 @@ use crate::computer::memory::Memory;
 
 pub(super) struct Video
 {
-    vram_start: usize,
-    vram_size: usize,
+    vram_start: u32,
+    vram_size: u32,
     window: Window,
 }
 
 impl Video
 {
-    pub(super) fn new(width: usize, height: usize, vram_start: usize) -> Video
+    pub(super) fn new(width: usize, height: usize, vram_start: u32) -> Video
     {
         Video
         {
             vram_start,
-            vram_size: width * height * 4,
+            vram_size: (width * height * 4) as u32,
             window: Window::new("super emulator kurwo", width, height, WindowOptions::default())
                 .unwrap(),
         }
