@@ -32,6 +32,7 @@ enum ExceptionCode
     Break = 9,
     ReservedInstruction = 10,
     Overflow = 12,
+    CalledTrap = 13, // https://faculty.kfupm.edu.sa/COE/aimane/coe301/lab/COE301_Lab_8_MIPS_Exceptions_and_IO.pdf
 }
 
 pub(super) struct CPU
@@ -202,6 +203,23 @@ impl CPU
             _ => {},
         };
 
+        // trap instructions
+        match (opcode, rt, imm)
+        {
+            (0, _,  0x34) => self.teq(rs, rt),
+            (1, 0xc, _) => self.teqi(rs, imm),
+            (0, _, 0x36) => self.teq(rs, rt),
+            (1, 0xe, _) => self.teqi(rs, imm),
+            (0, _, 0x30) => self.tge(rs, rt),
+            (0, _, 0x31) => self.tgeu(rs, rt),
+            (1, 8, _) => self.tgei(rs, imm),
+            (1, 9, _) => self.tgeiu(rs, imm),
+            (0, _, 0x32) => self.tlt(rs, rt),
+            (0, _, 0x33) => self.tltu(rs, rt),
+            (1, 0xA, _) => self.tlti(rs, imm),
+            (1, 0xB, _) => self.tltiu(rs, imm),
+            _ => {},
+        };
 
         // integer registers
         match (opcode, funct)
@@ -801,6 +819,103 @@ impl CPU // opcodes
             panic!("Bad privilege");
         }
         self.cp0_reg[rd as usize] = self.int_reg[rt as usize];
+    }
+
+
+    /* Trap if... instructions */
+    fn teq(&mut self, rs: u8, rt: u8)
+    {
+        if self.int_reg[rs as usize] as i32 == self.int_reg[rt as usize] as i32
+        {
+            self.execute_exception(ExceptionCode::CalledTrap);
+        }
+    }
+
+    fn teqi(&mut self, rs: u8, imm: u16)
+    {
+        if self.int_reg[rs as usize] as i32 == imm as i16 as i32
+        {
+            self.execute_exception(ExceptionCode::CalledTrap);
+        }
+    }
+
+    fn tne(&mut self, rs: u8, rt: u8)
+    {
+        if self.int_reg[rs as usize] != self.int_reg[rt as usize]
+        {
+            self.execute_exception(ExceptionCode::CalledTrap);
+        }
+    }
+
+    fn tnei(&mut self, rs: u8, imm: u16)
+    {
+        if self.int_reg[rs as usize] as i32 != imm as i16 as i32
+        {
+            self.execute_exception(ExceptionCode::CalledTrap);
+        }
+    }
+
+    fn tge(&mut self, rs: u8, rt: u8)
+    {
+        if self.int_reg[rs as usize] as i32 >= self.int_reg[rt as usize] as i32
+        {
+            self.execute_exception(ExceptionCode::CalledTrap);
+        }
+    }
+
+    fn tgeu(&mut self, rs: u8, rt: u8)
+    {
+        if self.int_reg[rs as usize] >= self.int_reg[rt as usize]
+        {
+            self.execute_exception(ExceptionCode::CalledTrap);
+        }
+    }
+    fn tgei(&mut self, rs: u8, imm: u16)
+    {
+        if self.int_reg[rs as usize] as i32 != imm as i16 as i32
+        {
+            self.execute_exception(ExceptionCode::CalledTrap);
+        }
+    }
+
+    fn tgeiu(&mut self, rs: u8, imm: u16)
+    {
+        if self.int_reg[rs as usize] >= imm as i16 as i32 as u32 // Imm is sign extended?
+        {
+            self.execute_exception(ExceptionCode::CalledTrap);
+        }
+    }
+
+    fn tlt(&mut self, rs: u8, rt: u8)
+    {
+        if (self.int_reg[rs as usize] as i32) < self.int_reg[rt as usize] as i32
+        {
+            self.execute_exception(ExceptionCode::CalledTrap);
+        }
+    }
+
+    fn tltu(&mut self, rs: u8, rt: u8)
+    {
+        if self.int_reg[rs as usize] < self.int_reg[rt as usize]
+        {
+            self.execute_exception(ExceptionCode::CalledTrap);
+        }
+    }
+
+    fn tlti(&mut self, rs: u8, imm: u16)
+    {
+        if (self.int_reg[rs as usize] as i32) < imm as i16 as i32
+        {
+            self.execute_exception(ExceptionCode::CalledTrap);
+        }
+    }
+
+    fn tltiu(&mut self, rs: u8, imm: u16)
+    {
+        if self.int_reg[rs as usize] < imm as i16 as i32 as u32 // Imm is signed extended?
+        {
+            self.execute_exception(ExceptionCode::CalledTrap);
+        }
     }
 
     fn rfe(&mut self)
