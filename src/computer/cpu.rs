@@ -19,6 +19,7 @@ pub(super) struct MemoryBuffer
 
 const EXCEPTION_HANDLER_ADDRESS: u32 = 0x8000_0180; // 0x8000_0080 ?
 
+#[allow(unused)]
 #[repr(u8)]
 enum ExceptionCode
 {
@@ -132,6 +133,7 @@ impl CPU
             CPUPhase::InterruptCheck =>
             {
                 self.set_interrupt_requests(interrupt_requests);
+                self.execute_exception(ExceptionCode::Interrupt); // Let the OS handle it.
                 self.phase = CPUPhase::Fetch;
             }
         }
