@@ -335,7 +335,7 @@ impl CPU // opcodes
 
     fn syscall(&mut self)
     {
-        // TODO
+        self.execute_exception(ExceptionCode::Syscall); // Let the OS handle it.
     }
 
     fn mfhi(&mut self, rd: u8)
