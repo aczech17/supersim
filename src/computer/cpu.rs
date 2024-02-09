@@ -145,10 +145,11 @@ impl CPU
         /* Check memory violation. */
         let is_requesting_kernel_space =  self.memory_buffer.data_size > 0 &&
             self.memory_buffer.address & 0x80000000 != 0;
-        let kernel_violation = is_requesting_kernel_space && !self.is_kernel_mode();
+        let kernel_memory_violation = is_requesting_kernel_space && !self.is_kernel_mode();
 
-        if kernel_violation
+        if kernel_memory_violation
         {
+            self.memory_buffer.data_size = 0; // Cancel the illegal transmission.
             let exception_code = match self.memory_buffer.store
             {
                 true => ExceptionCode::IllegalAddressStore,
