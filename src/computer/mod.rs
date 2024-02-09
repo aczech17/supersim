@@ -44,26 +44,35 @@ impl Computer
 
     fn cpu_step(&mut self)
     {
-        // fetch
-        let mem_request = self.cpu.tick(0);
+        let interrupt_requests: u8 = 0; // temporarily
+
+        // FETCH
+        let mem_request = self.cpu.tick(0, interrupt_requests);
         let pc = mem_request.address;
         let instruction = self.ram.read_data(pc, 4);
 
-        // execute
-        let mem_request = self.cpu.tick(instruction);
+        // EXECUTE
+        let mem_request = self.cpu.tick(instruction, interrupt_requests);
 
         // check for memory request
         match (mem_request.data_size, mem_request.store, mem_request.address)
         {
-            (0, _, _) => self.cpu.tick(0), // no cpu ram transmission
-            (size, false, addr) => self.cpu.tick(self.ram.read_data(addr, size)),
-            (size, true, addr) =>
+            (0, _, _) => self.cpu.tick(0, interrupt_requests), // no cpu ram transmission
+            (size, false, addr) => // load from RAM
+            {
+                let data = self.ram.read_data(addr, size);
+                self.cpu.tick(data, interrupt_requests)
+            },
+            (size, true, addr) => // write to RAM
             {
                 let data = mem_request.data;
                 self.ram.write_data(addr, data, size);
-                self.cpu.tick(0)
+                self.cpu.tick(0, interrupt_requests)
             }
         };
+
+        // Send interrupt requests.
+        self.cpu.tick(0, interrupt_requests);
     }
 
     pub fn run(&mut self)

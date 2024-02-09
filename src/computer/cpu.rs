@@ -3,6 +3,7 @@ enum CPUPhase
     Fetch,
     DecodeAndExecute,
     WriteBack,
+    InterruptCheck,
 }
 
 #[derive(Copy, Clone)]
@@ -16,10 +17,27 @@ pub(super) struct MemoryBuffer
     pub(super) sign_extended: bool,
 }
 
+const EXCEPTION_HANDLER_ADDRESS: u32 = 0x8000_0180; // 0x8000_0080 ?
+
+#[repr(u8)]
+enum ExceptionCode
+{
+    Interrupt = 0,
+    IllegalAddressLoad = 4,
+    IllegalAddressStore = 5,
+    BusErrorOnInstructionFetch = 6,
+    BusErrorOnDataReference = 7,
+    Syscall = 8,
+    Break = 9,
+    ReservedInstruction = 10,
+    Overflow = 12,
+}
+
 pub(super) struct CPU
 {
     int_reg: [u32; 32],
-    fp_reg: [f32; 32],
+    cp0_reg: [u32; 32],
+    cp1_reg: [f32; 32],
     hi: u32,
     lo: u32,
     pc: u32,
@@ -41,16 +59,26 @@ impl CPU
             sign_extended: false,
         };
 
+        let mut cp0_reg = [0; 32];
+        // status
+        cp0_reg[12] = 0b0000000000000000_11111111_00___00_00_01;
+
         CPU
         {
             int_reg: [0; 32],
-            fp_reg: [0.0; 32],
+            cp1_reg: [0.0; 32],
+            cp0_reg,
             hi: 0,
             lo: 0,
             pc: 0,
             memory_buffer,
             phase: CPUPhase::Fetch,
         }
+    }
+
+    fn is_kernel_mode(&self) -> bool
+    {
+        self.cp0_reg[12] & 0b10 == 0
     }
 
     fn write_to_reg(&mut self, reg_num: u8, val: u32)
@@ -64,7 +92,7 @@ impl CPU
         };
     }
 
-    pub(super) fn tick(&mut self, data: u32) -> MemoryBuffer
+    pub(super) fn tick(&mut self, data: u32, interrupt_requests: u8) -> MemoryBuffer
     {
         match self.phase
         {
@@ -99,8 +127,30 @@ impl CPU
                     self.write_back();
                 }
                 self.memory_buffer.data_size = 0; // reset the buffer
+                self.phase = CPUPhase::InterruptCheck;
+            }
+            CPUPhase::InterruptCheck =>
+            {
+                self.set_interrupt_requests(interrupt_requests);
                 self.phase = CPUPhase::Fetch;
             }
+        }
+
+
+        /* Check memory violation. */
+        let is_requesting_kernel_space =  self.memory_buffer.data_size > 0 &&
+            self.memory_buffer.address & 0x80000000 != 0;
+        let kernel_violation = is_requesting_kernel_space && !self.is_kernel_mode();
+
+        if kernel_violation
+        {
+            let exception_code = match self.memory_buffer.store
+            {
+                true => ExceptionCode::IllegalAddressStore,
+                false => ExceptionCode::IllegalAddressLoad,
+            };
+
+            self.execute_exception(exception_code);
         }
 
         self.memory_buffer
@@ -108,6 +158,15 @@ impl CPU
 
     fn decode_and_execute(&mut self, instruction: u32)
     {
+        /*
+            RFE encoding
+            https://people.cs.pitt.edu/~don/coe1502/current/Unit4a/Unit4a.html
+         */
+        if instruction == 0b010000_1_0000000000000000000_010000
+        {
+            self.rfe();
+            return;
+        }
 
         let opcode = instruction >> 26;
         let rs = ((instruction >> 21) & 0b11111) as u8;
@@ -118,6 +177,18 @@ impl CPU
         let imm = (instruction & 0xFFFF) as u16;
         let address = instruction & 0x3FFFFFF;
 
+        // coprocessor 0
+        match (opcode, rs, funct)
+        {
+            (16, 0, 0) => self.mfc0(rt, rd),
+            (16, 4, 0) => self.mtc0(rt, rd),
+            // lwc0?
+            // swc0?
+            _ => {},
+        };
+
+
+        // integer registers
         match (opcode, funct)
         {
             (0, 0) => self.sll(rd, rt, shamt),
@@ -347,7 +418,7 @@ impl CPU // opcodes
         // overflow check
         if (op1 > 0 && op2 > 0 && result < 0) | (op1 < 0 && op2 < 0 && result > 0)
         {
-            self.set_exception();
+            self.execute_exception(ExceptionCode::Overflow);
         }
 
         self.write_to_reg(rd, result as u32);
@@ -372,7 +443,7 @@ impl CPU // opcodes
 
         if (op1 < 0 && op2 > 0 && result > 0) || (op1 > 0 && op2 < 0 && result < 0)
         {
-            self.set_exception();
+            self.execute_exception(ExceptionCode::Overflow);
         }
 
         self.write_to_reg(rd, result as u32);
@@ -514,7 +585,7 @@ impl CPU // opcodes
 
         if (op1 < 0 && op2 < 0 && result > 0) || (op1 > 0 && op2 > 0 && result < 0)
         {
-            self.set_exception();
+            self.execute_exception(ExceptionCode::Overflow);
         }
 
         self.write_to_reg(rt, result as u32);
@@ -698,9 +769,41 @@ impl CPU // opcodes
             sign_extended: false,
         }
     }
+
+    fn mfc0(&mut self, rt: u8, rd: u8)
+    {
+        if !self.is_kernel_mode()
+        {
+            panic!("Bad privilege");
+        }
+        self.write_to_reg(rt, self.cp0_reg[rd as usize]);
+    }
+
+    fn mtc0(&mut self, rt: u8, rd: u8)
+    {
+        if !self.is_kernel_mode()
+        {
+            panic!("Bad privilege");
+        }
+        self.cp0_reg[rd as usize] = self.int_reg[rt as usize];
+    }
+
+    fn rfe(&mut self)
+    {
+        if !self.is_kernel_mode()
+        {
+            panic!("Bad privilege");
+        }
+
+        let status = &mut self.cp0_reg[12];
+
+        let old_previous = (*status & 0b111100) >> 2;
+        *status &= !0b1111; // clear previous and current
+        *status |= old_previous; // restore previous and current
+    }
 }
 
-impl CPU // auxiliary
+impl CPU
 {
     fn branch(&mut self, imm: u16)
     {
@@ -709,8 +812,41 @@ impl CPU // auxiliary
         self.pc = new_pc;
     }
 
-    fn set_exception(&mut self)
+    // fn set_interrupt_pending(&mut self, interrupt_number: u8)
+    // {
+    //     let cause = &mut self.cp0_reg[13];
+    //     *cause |= 1 << (interrupt_number & 0b111 + 8);
+    // }
+    //
+    // fn clear_interrupt_pending(&mut self, interrupt_number: u8)
+    // {
+    //     let cause = &mut self.cp0_reg[13];
+    //     *cause &= !(1 << (interrupt_number & 0b111 + 8));
+    // }
+
+    fn set_interrupt_requests(&mut self, interrupt_requests: u8)
     {
-        // todo
+        let cause = &mut self.cp0_reg[13];
+        *cause &= !(0xFF << 8); // Clear old interrupt requests.
+        *cause |= (interrupt_requests as u32) << 8; // Set new interrupt requests.
+    }
+
+    fn execute_exception(&mut self, exception_code: ExceptionCode)
+    {
+        /* Set exception cause */
+        let cause = &mut self.cp0_reg[13];
+        *cause &= !0b1111100; // clear old exception code
+        *cause |= (exception_code as u32 & 0b11111) << 2; // set new exception code
+
+        /* Set processor status */
+        let status = &mut self.cp0_reg[12];
+        let previous_current_status = 0b1111; // keep statuses
+        *status &= !0b111111; // clear statuses
+        *status |= previous_current_status << 2; // save statuses in old and previous
+        // Now current status is 00 (kernel, interrupts disabled)
+
+
+        self.cp0_reg[14] = self.pc; // Save return address in EPC
+        self.pc = EXCEPTION_HANDLER_ADDRESS; // Jump to exception handler
     }
 }
