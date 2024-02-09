@@ -173,6 +173,15 @@ impl CPU
             return;
         }
 
+        /*
+            https://www.math.unipd.it/~sperduti/ARCHITETTURE-1/mips32.pdf
+         */
+        if instruction == 0b010000_1_0000000000000000000_010010
+        {
+            self.eret();
+            return;
+        }
+
         let opcode = instruction >> 26;
         let rs = ((instruction >> 21) & 0b11111) as u8;
         let rt = ((instruction >> 16) & 0b11111) as u8;
@@ -805,6 +814,12 @@ impl CPU // opcodes
         let old_previous = (*status & 0b111100) >> 2;
         *status &= !0b1111; // clear previous and current
         *status |= old_previous; // restore previous and current
+    }
+
+    fn eret(&mut self)
+    {
+        self.rfe();
+        self.pc = self.cp0_reg[14];
     }
 }
 
