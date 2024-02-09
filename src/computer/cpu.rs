@@ -133,7 +133,10 @@ impl CPU
             CPUPhase::InterruptCheck =>
             {
                 self.set_interrupt_requests(interrupt_requests);
-                self.execute_exception(ExceptionCode::Interrupt); // Let the OS handle it.
+                if interrupt_requests != 0
+                {
+                    self.execute_exception(ExceptionCode::Interrupt); // Let the OS handle it.
+                }
                 self.phase = CPUPhase::Fetch;
             }
         }
