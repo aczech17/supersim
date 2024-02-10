@@ -411,7 +411,7 @@ impl CPU // opcodes
         let result = op1 * op2;
 
         let high = (result >> 32) as u32;
-        let low = (result >> 32) as u32;
+        let low = (result & 0xFFFFFFFF) as u32;
 
         self.hi = high;
         self.lo = low;
