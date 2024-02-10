@@ -1,3 +1,5 @@
+use std::mem;
+
 enum CPUPhase
 {
     Fetch,
@@ -39,9 +41,12 @@ pub(super) struct CPU
 {
     int_reg: [u32; 32],
     cp0_reg: [u32; 32],
-    cp1_reg: [f32; 32],
     hi: u32,
     lo: u32,
+
+    cp1_reg: [f32; 32],
+    cc: [bool; 8],
+
     pc: u32,
     memory_buffer: MemoryBuffer,
     phase: CPUPhase,
@@ -68,10 +73,14 @@ impl CPU
         CPU
         {
             int_reg: [0; 32],
-            cp1_reg: [0.0; 32],
+
             cp0_reg,
             hi: 0,
             lo: 0,
+
+            cp1_reg: [0.0; 32],
+            cc: [false; 8],
+
             pc: 0,
             memory_buffer,
             phase: CPUPhase::Fetch,
@@ -986,3 +995,76 @@ impl CPU
         self.pc = EXCEPTION_HANDLER_ADDRESS; // Jump to exception handler
     }
 }
+
+impl CPU // FP coprocessor1
+{
+    fn get_double_precision(&self, reg_num: u8) -> f64
+    {
+        if reg_num % 2 == 1
+        {
+            panic!("FP register not even");
+        }
+
+        let upper: u32 = unsafe {mem::transmute(self.cp1_reg[reg_num as usize])};
+        let lower: u32 = unsafe {mem::transmute(self.cp1_reg[(reg_num as usize) + 1])};
+
+        let joined: u64 = ((upper as u64) << 32) | (lower as u64);
+        let result: f64 = unsafe{mem::transmute(joined)};
+        result
+    }
+
+    fn write_to_double_register(&mut self, reg_num: u8, data: f64)
+    {
+        if reg_num % 2 == 1
+        {
+            panic!("FP register not even");
+        }
+
+        let bits: u64 = unsafe {mem::transmute(data)};
+
+        let upper_bits: u32 = (bits >> 32) as u32;
+        let lower_bits: u32 = (bits & 0xFFFFFFFF) as u32;
+
+        let upper: f32 = unsafe {mem::transmute(upper_bits)};
+        let lower: f32 = unsafe {mem::transmute(lower_bits)};
+
+        self.cp1_reg[reg_num as usize] = upper;
+        self.cp1_reg[(reg_num as usize) + 1] = lower;
+    }
+
+    fn abs_d(&mut self, fd: u8, fs: u8)
+    {
+        let op1 = self.get_double_precision(fs);
+        let result = op1.abs();
+
+        self.write_to_double_register(fd, result);
+    }
+
+    fn abs_s(&mut self, fd: u8, fs: u8)
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        let result = op1.abs();
+        self.cp1_reg[fd as usize] = result;
+    }
+
+    fn add_d(&mut self, fd: u8, fs: u8, ft: u8)
+    {
+        let op1 = self.get_double_precision(fs);
+        let op2 = self.get_double_precision(ft);
+
+        let result = op1 + op2;
+
+        self.write_to_double_register(fd, result);
+    }
+
+    fn add_s(&mut self, fd: u8, fs: u8, ft: u8)
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        let op2 = self.cp1_reg[ft as usize];
+
+        let result = op1 + op2;
+
+        self.cp1_reg[fd as usize] = result;
+    }
+}
+
