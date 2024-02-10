@@ -208,8 +208,8 @@ impl CPU
         {
             (0, _,  0x34) => self.teq(rs, rt),
             (1, 0xc, _) => self.teqi(rs, imm),
-            (0, _, 0x36) => self.teq(rs, rt),
-            (1, 0xe, _) => self.teqi(rs, imm),
+            (0, _, 0x36) => self.tne(rs, rt),
+            (1, 0xe, _) => self.tnei(rs, imm),
             (0, _, 0x30) => self.tge(rs, rt),
             (0, _, 0x31) => self.tgeu(rs, rt),
             (1, 8, _) => self.tgei(rs, imm),
