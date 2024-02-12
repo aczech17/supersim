@@ -1005,8 +1005,8 @@ impl CPU // FP coprocessor1
             panic!("FP register not even");
         }
 
-        let upper: u32 = unsafe {mem::transmute(self.cp1_reg[reg_num as usize])};
-        let lower: u32 = unsafe {mem::transmute(self.cp1_reg[(reg_num as usize) + 1])};
+        let upper: u32 = unsafe {mem::transmute(self.cp1_reg[(reg_num + 1) as usize])};
+        let lower: u32 = unsafe {mem::transmute(self.cp1_reg[reg_num as usize])};
 
         let joined: u64 = ((upper as u64) << 32) | (lower as u64);
         let result: f64 = unsafe{mem::transmute(joined)};
@@ -1028,8 +1028,8 @@ impl CPU // FP coprocessor1
         let upper: f32 = unsafe {mem::transmute(upper_bits)};
         let lower: f32 = unsafe {mem::transmute(lower_bits)};
 
-        self.cp1_reg[reg_num as usize] = upper;
-        self.cp1_reg[(reg_num as usize) + 1] = lower;
+        self.cp1_reg[reg_num as usize] = lower;
+        self.cp1_reg[(reg_num as usize) + 1] = upper;
     }
 
     fn abs_d(&mut self, fd: u8, fs: u8)
