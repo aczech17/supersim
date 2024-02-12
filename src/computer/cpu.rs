@@ -143,18 +143,16 @@ impl CPU
             CPUPhase::InterruptCheck =>
             {
                 self.set_interrupt_requests(interrupt_requests);
-                if interrupt_requests != 0
-                {
-                    self.execute_exception(ExceptionCode::Interrupt); // Let the OS handle it.
-                }
+                self.handle_interrupts(interrupt_requests);
                 self.phase = CPUPhase::Fetch;
             }
         }
 
 
         /* Check memory violation. */
+        let address = self.memory_buffer.address;
         let is_requesting_kernel_space =  self.memory_buffer.data_size > 0 &&
-            self.memory_buffer.address & 0x80000000 != 0;
+            address & 0x80000000 != 0;
         let kernel_memory_violation = is_requesting_kernel_space && !self.is_kernel_mode();
 
         if kernel_memory_violation
@@ -166,10 +164,28 @@ impl CPU
                 false => ExceptionCode::IllegalAddressLoad,
             };
 
-            self.execute_exception(exception_code);
+            self.execute_exception(exception_code, Some(address));
         }
 
         self.memory_buffer
+    }
+
+    fn handle_interrupts(&mut self, interrupt_requests: u8)
+    {
+        let status = &self.cp0_reg[12];
+
+        let interrupts_enabled = (status & 0x01) == 1;
+        if !interrupts_enabled
+        {
+            return;
+        }
+
+        let mask = ((status >> 8) & 0xFF) as u8;
+        let non_masked_interrupts = interrupt_requests & mask;
+        if non_masked_interrupts != 0
+        {
+            self.execute_exception(ExceptionCode::Interrupt, None);
+        }
     }
 
     fn decode_and_execute(&mut self, instruction: u32)
@@ -375,7 +391,7 @@ impl CPU // opcodes
 
     fn syscall(&mut self)
     {
-        self.execute_exception(ExceptionCode::Syscall); // Let the OS handle it.
+        self.execute_exception(ExceptionCode::Syscall, None); // Let the OS handle it.
     }
 
     fn mfhi(&mut self, rd: u8)
@@ -460,7 +476,7 @@ impl CPU // opcodes
         // overflow check
         if (op1 > 0 && op2 > 0 && result < 0) | (op1 < 0 && op2 < 0 && result > 0)
         {
-            self.execute_exception(ExceptionCode::Overflow);
+            self.execute_exception(ExceptionCode::Overflow, None);
         }
 
         self.write_to_reg(rd, result as u32);
@@ -485,7 +501,7 @@ impl CPU // opcodes
 
         if (op1 < 0 && op2 > 0 && result > 0) || (op1 > 0 && op2 < 0 && result < 0)
         {
-            self.execute_exception(ExceptionCode::Overflow);
+            self.execute_exception(ExceptionCode::Overflow, None);
         }
 
         self.write_to_reg(rd, result as u32);
@@ -627,7 +643,7 @@ impl CPU // opcodes
 
         if (op1 < 0 && op2 < 0 && result > 0) || (op1 > 0 && op2 > 0 && result < 0)
         {
-            self.execute_exception(ExceptionCode::Overflow);
+            self.execute_exception(ExceptionCode::Overflow, None);
         }
 
         self.write_to_reg(rt, result as u32);
@@ -836,7 +852,7 @@ impl CPU // opcodes
     {
         if self.int_reg[rs as usize] as i32 == self.int_reg[rt as usize] as i32
         {
-            self.execute_exception(ExceptionCode::CalledTrap);
+            self.execute_exception(ExceptionCode::CalledTrap, None);
         }
     }
 
@@ -844,7 +860,7 @@ impl CPU // opcodes
     {
         if self.int_reg[rs as usize] as i32 == imm as i16 as i32
         {
-            self.execute_exception(ExceptionCode::CalledTrap);
+            self.execute_exception(ExceptionCode::CalledTrap, None);
         }
     }
 
@@ -852,7 +868,7 @@ impl CPU // opcodes
     {
         if self.int_reg[rs as usize] != self.int_reg[rt as usize]
         {
-            self.execute_exception(ExceptionCode::CalledTrap);
+            self.execute_exception(ExceptionCode::CalledTrap, None);
         }
     }
 
@@ -860,7 +876,7 @@ impl CPU // opcodes
     {
         if self.int_reg[rs as usize] as i32 != imm as i16 as i32
         {
-            self.execute_exception(ExceptionCode::CalledTrap);
+            self.execute_exception(ExceptionCode::CalledTrap, None);
         }
     }
 
@@ -868,7 +884,7 @@ impl CPU // opcodes
     {
         if self.int_reg[rs as usize] as i32 >= self.int_reg[rt as usize] as i32
         {
-            self.execute_exception(ExceptionCode::CalledTrap);
+            self.execute_exception(ExceptionCode::CalledTrap, None);
         }
     }
 
@@ -876,14 +892,14 @@ impl CPU // opcodes
     {
         if self.int_reg[rs as usize] >= self.int_reg[rt as usize]
         {
-            self.execute_exception(ExceptionCode::CalledTrap);
+            self.execute_exception(ExceptionCode::CalledTrap, None);
         }
     }
     fn tgei(&mut self, rs: u8, imm: u16)
     {
         if self.int_reg[rs as usize] as i32 != imm as i16 as i32
         {
-            self.execute_exception(ExceptionCode::CalledTrap);
+            self.execute_exception(ExceptionCode::CalledTrap, None);
         }
     }
 
@@ -891,7 +907,7 @@ impl CPU // opcodes
     {
         if self.int_reg[rs as usize] >= imm as i16 as i32 as u32 // Imm is sign extended?
         {
-            self.execute_exception(ExceptionCode::CalledTrap);
+            self.execute_exception(ExceptionCode::CalledTrap, None);
         }
     }
 
@@ -899,7 +915,7 @@ impl CPU // opcodes
     {
         if (self.int_reg[rs as usize] as i32) < self.int_reg[rt as usize] as i32
         {
-            self.execute_exception(ExceptionCode::CalledTrap);
+            self.execute_exception(ExceptionCode::CalledTrap, None);
         }
     }
 
@@ -907,7 +923,7 @@ impl CPU // opcodes
     {
         if self.int_reg[rs as usize] < self.int_reg[rt as usize]
         {
-            self.execute_exception(ExceptionCode::CalledTrap);
+            self.execute_exception(ExceptionCode::CalledTrap, None);
         }
     }
 
@@ -915,7 +931,7 @@ impl CPU // opcodes
     {
         if (self.int_reg[rs as usize] as i32) < imm as i16 as i32
         {
-            self.execute_exception(ExceptionCode::CalledTrap);
+            self.execute_exception(ExceptionCode::CalledTrap, None);
         }
     }
 
@@ -923,7 +939,7 @@ impl CPU // opcodes
     {
         if self.int_reg[rs as usize] < imm as i16 as i32 as u32 // Imm is signed extended?
         {
-            self.execute_exception(ExceptionCode::CalledTrap);
+            self.execute_exception(ExceptionCode::CalledTrap, None);
         }
     }
 
@@ -976,8 +992,13 @@ impl CPU
         *cause |= (interrupt_requests as u32) << 8; // Set new interrupt requests.
     }
 
-    fn execute_exception(&mut self, exception_code: ExceptionCode)
+    fn execute_exception(&mut self, exception_code: ExceptionCode, bad_address: Option<u32>)
     {
+        if let Some(address) = bad_address
+        {
+            self.cp0_reg[8] = address;
+        }
+
         /* Set exception cause */
         let cause = &mut self.cp0_reg[13];
         *cause &= !0b1111100; // clear old exception code
