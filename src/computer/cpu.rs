@@ -1066,5 +1066,46 @@ impl CPU // FP coprocessor1
 
         self.cp1_reg[fd as usize] = result;
     }
+
+    fn ceil_w_d(&mut self, fd: u8, fs: u8)
+    {
+        let op1 = self.get_double_precision(fs);
+        let ceil_value = op1.ceil() as i64;
+
+        let bits: f64 = unsafe {mem::transmute(ceil_value)};
+
+        self.write_to_double_register(fd, bits);
+    }
+
+    fn ceil_w_s(&mut self, fd: u8, fs: u8)
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        let ceil_value = op1.ceil() as i32;
+
+        let result: f32 = unsafe {mem::transmute(ceil_value)};
+        self.cp1_reg[fd as usize] = result;
+    }
+
+    fn c_eq_d(&mut self, cc_num: u8, fs: u8, ft: u8)
+    {
+        let op1 = self.get_double_precision(fs);
+        let op2 = self.get_double_precision(ft);
+
+        if op1 == op2
+        {
+            self.cc[cc_num as usize] = true;
+        }
+    }
+
+    fn c_eq_s(&mut self, cc_num: u8, fs: u8, ft: u8)
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        let op2 = self.cp1_reg[ft as usize];
+
+        if op1 == op2
+        {
+            self.cc[cc_num as usize] = true;
+        }
+    }
 }
 
