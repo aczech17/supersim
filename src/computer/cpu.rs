@@ -210,6 +210,7 @@ impl CPU
         }
 
         self.decode_cp0(instruction);
+        self.decode_cp1(instruction);
         self.decode_trap_instruction(instruction);
         self.decode_int_instruction(instruction);
     }
@@ -237,7 +238,7 @@ impl CPU
         let opcode = instruction >> 26;
         let opcode2 = (instruction >> 21) & 0b11111;
         let ft = ((instruction >> 16) & 0b11111) as u8;
-        let early_cc = (instruction >> 18) & 0b111;
+        let early_cc = ((instruction >> 18) & 0b111) as u8;
         let after_early_cc = (instruction >> 16) & 0b11;
         let fs = ((instruction >> 11) & 0b11111) as u8;
         let fd = ((instruction >> 6) & 0b11111) as u8;
@@ -245,6 +246,13 @@ impl CPU
         let late_cc = ((instruction >> 8) & 0b111) as u8;
         let after_late_cc = (instruction >> 6) & 0b11;
         let last = instruction & 0b111111;
+
+        match (opcode, opcode2, fd, last)
+        {
+            (0x11, 0, 0, 0) => self.mfc1(ft, fs),
+            (0x11, 4, 0, 0) => self.mtc1(ft, fs),
+            _ => {},
+        }
 
         match (opcode, opcode2, ft, last)
         {
@@ -258,7 +266,30 @@ impl CPU
             (0x11, 0x14, 0, 0x21) => self.cvt_d_w(fd, fs),
             (0x11, 0x11, 0, 0x20) => self.cvt_s_d(fd, fs),
             (0x11, 0x14, 0, 0x20) => self.cvt_s_w(fd, fs),
-
+            (0x11, 0x11, 0, 0x24) => self.cvt_w_d(fd, fs),
+            (0x11, 0x10, 0, 0x24) => self.cvt_w_s(fd, fs),
+            (0x11, 0x11, _, 3) => self.div_d(fd, fs, ft),
+            (0x11, 0x10, _, 3) => self.div_s(fd, fs, ft),
+            (0x11, 0x11, 0, 0xF) => self.floor_w_d(fd, fs),
+            (0x11, 0x10, 0, 0xF) => self.floor_w_s(fd, fs),
+            (0x11, 0x11, 0, 6) => self.mov_d(fd, fs),
+            (0x11, 0x10, 0, 6) => self.mov_s(fd, fs),
+            (0x11, 0x11, rt, 0x13) => self.movn_d(fd, fs, rt), // rt instead of ft
+            (0x11, 0x10, rt, 0x13) => self.movn_s(fd, fs, rt), // rt instead of ft
+            (0x11, 0x11, rt, 0x12) => self.movz_d(fd, fs, rt), // rt instead of ft
+            (0x11, 0x10, rt, 0x12) => self.movz_s(fd, fs, rt), // rt instead of ft
+            (0x11, 0x11, _, 2) => self.mul_d(fd, fs, ft),
+            (0x11, 0x10, _, 2) => self.mul_s(fd, fs, ft),
+            (0x11, 0x11, 0, 7) => self.neg_d(fd, fs),
+            (0x11, 0x10, 0, 7) => self.neg_s(fd, fs),
+            (0x11, 0x11, 0, 0xC) => self.round_w_d(fd, fs),
+            (0x11, 0x10, 0, 0xC) => self.round_w_s(fd, fs),
+            (0x11, 0x11, 0, 4) => self.sqrt_d(fd, fs),
+            (0x11, 0x10, 0, 4) => self.sqrt_s(fd, fs),
+            (0x11, 0x11, _, 1) => self.sub_d(fd, fs, ft),
+            (0x11, 0x10, _, 1) => self.sub_s(fd, fs, ft),
+            (0x11, 0x11, 0, 0xD) => self.trunc_d(fd, fs),
+            (0x11, 0x10, 0, 0xD) => self.trunc_s(fd,fs),
             _ => {},
         }
 
@@ -273,7 +304,14 @@ impl CPU
             _ => {},
         }
 
-
+        match (opcode, opcode2, early_cc, after_early_cc, last)
+        {
+            (0x11, 0x11, early_cc, 0, 0x11) => self.movf_d(fd, fs, early_cc),
+            (0x11, 0x10, early_cc, 0, 0x11) => self.movf_s(fd, fs, early_cc),
+            (0x11, 0x11, early_cc, 1, 0x11) => self.movt_d(fd, fs, early_cc),
+            (0x11, 0x10, early_cc, 1, 0x11) => self.movt_s(fd, fs, early_cc),
+            _ => {},
+        }
     }
 
     fn decode_trap_instruction(&mut self, instruction: u32)
@@ -1459,7 +1497,7 @@ impl CPU // FP coprocessor1
         self.cp1_reg[fd as usize] = result;
     }
 
-    fn round_d(&mut self, fd: u8, fs: u8)
+    fn round_w_d(&mut self, fd: u8, fs: u8)
     {
         let op1 = self.get_double_precision(fs);
         let result = op1.round() as i32;
@@ -1468,7 +1506,7 @@ impl CPU // FP coprocessor1
         self.cp1_reg[fd as usize] = bits;
     }
 
-    fn round_s(&mut self, fd: u8, fs: u8)
+    fn round_w_s(&mut self, fd: u8, fs: u8)
     {
         let op1 = self.cp1_reg[fs as usize];
         let result = op1.round() as i32;
