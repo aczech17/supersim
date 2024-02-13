@@ -298,7 +298,7 @@ impl CPU
             (40, _) => self.sb(rt, rs, imm),
             (41, _) => self.sh(rt, rs, imm),
             (43, _) => self.sw(rt, rs, imm),
-            _ => panic!("Bad instruction"),
+            _ => panic!("Bad instruction: {:X}", instruction),
         }
     }
 
@@ -1053,6 +1053,21 @@ impl CPU // FP coprocessor1
         self.cp1_reg[(reg_num as usize) + 1] = upper;
     }
 
+    fn mfc1(&mut self, rt: u8, fs: u8)
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        let result: u32 = unsafe {mem::transmute(op1)};
+        self.write_to_reg(rt, result);
+    }
+
+    fn mtc1(&mut self, rt: u8, fs: u8)
+    {
+        let op1 = self.int_reg[rt as usize];
+        let result: f32 = unsafe {mem::transmute(op1)};
+
+        self.cp1_reg[fs as usize] = result;
+    }
+
     fn abs_d(&mut self, fd: u8, fs: u8)
     {
         let op1 = self.get_double_precision(fs);
@@ -1091,11 +1106,11 @@ impl CPU // FP coprocessor1
     fn ceil_w_d(&mut self, fd: u8, fs: u8)
     {
         let op1 = self.get_double_precision(fs);
-        let ceil_value = op1.ceil() as i64;
+        let ceil_value = op1.ceil() as i32;
 
-        let bits: f64 = unsafe {mem::transmute(ceil_value)};
+        let bits: f32 = unsafe {mem::transmute(ceil_value)};
 
-        self.write_to_double_register(fd, bits);
+        self.cp1_reg[fd as usize] = bits;
     }
 
     fn ceil_w_s(&mut self, fd: u8, fs: u8)
@@ -1128,5 +1143,146 @@ impl CPU // FP coprocessor1
             self.cc[cc_num as usize] = true;
         }
     }
+
+    fn c_le_d(&mut self, cc_num: u8, fs: u8, ft: u8)
+    {
+        let op1 = self.get_double_precision(fs);
+        let op2 = self.get_double_precision(ft);
+
+        if op1 <= op2
+        {
+            self.cc[cc_num as usize] = true;
+        }
+    }
+
+    fn c_le_s(&mut self, cc_num: u8, fs: u8, ft: u8)
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        let op2 = self.cp1_reg[ft as usize];
+
+        if op1 <= op2
+        {
+            self.cc[cc_num as usize] = true;
+        }
+    }
+
+    fn c_lt_d(&mut self, cc_num: u8, fs: u8, ft: u8)
+    {
+        let op1 = self.get_double_precision(fs);
+        let op2 = self.get_double_precision(ft);
+
+        if op1 < op2
+        {
+            self.cc[cc_num as usize] = true;
+        }
+    }
+
+    fn c_lt_s(&mut self, cc_num: u8, fs: u8, ft: u8)
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        let op2 = self.cp1_reg[ft as usize];
+
+        if op1 < op2
+        {
+            self.cc[cc_num as usize] = true;
+        }
+    }
+
+    fn cvt_d_s(&mut self, fd: u8, fs: u8)
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        let result = op1 as f64;
+
+        self.write_to_double_register(fd, result);
+    }
+
+    fn cvt_d_w(&mut self, fd: u8, fs: u8) // convert int to double
+    {
+        let op1 = self.get_double_precision(fs);
+
+        let bits: i64 = unsafe {mem::transmute(op1)};
+        let result = bits as f64;
+
+        self.write_to_double_register(fd, result);
+    }
+
+    fn cvt_s_d(&mut self, fd: u8, fs: u8) // convert double to single
+    {
+        let op1 = self.get_double_precision(fs);
+        let result = op1 as f32;
+
+        self.cp1_reg[fd as usize] = result;
+    }
+
+    fn cvt_s_w(&mut self, fd: u8, fs: u8) // convert int to single
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        let bits: i32 = unsafe {mem::transmute(op1)};
+
+        let result = bits as f32;
+        self.cp1_reg[fd as usize] = result;
+    }
+
+    fn cvt_w_d(&mut self, fd: u8, fs: u8) // convert double to int32
+    {
+        let op1 = self.get_double_precision(fs);
+        let converted = op1 as i32;
+
+        let converted_bits: f32 = unsafe {mem::transmute(converted)};
+
+        self.cp1_reg[fd as usize] = converted_bits;
+    }
+
+    fn cvt_w_s(&mut self, fd: u8, fs: u8) // convert single to int32
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        let converted = op1 as i32;
+
+        let converted_bits: f32 = unsafe {mem::transmute(converted)};
+
+        self.cp1_reg[fd as usize] = converted_bits;
+    }
+
+    fn div_d(&mut self, fd: u8, fs: u8, ft: u8)
+    {
+        let op1 = self.get_double_precision(fs);
+        let op2 = self.get_double_precision(ft);
+
+        let result = op1 / op2;
+
+        self.write_to_double_register(fd, result);
+    }
+
+    fn div_s(&mut self, fd: u8, fs: u8, ft: u8)
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        let op2 = self.cp1_reg[ft as usize];
+
+        let result = op1 / op2;
+
+        self.cp1_reg[fd as usize] = result;
+    }
+
+    fn floor_w_d(&mut self, fd: u8, fs: u8) // floor of f64 as i32
+    {
+        let op1 = self.get_double_precision(fs);
+        let result = op1.ceil() as i32;
+
+        let bits: f32 = unsafe {mem::transmute(result)};
+        self.cp1_reg[fd as usize] = bits;
+    }
+
+    fn floor_w_s(&mut self, fd: u8, fs: u8) // floor of f32 as i32
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        let result = op1.ceil() as i32;
+
+        let bits: f32 = unsafe {mem::transmute(result)};
+        self.cp1_reg[fd as usize] = bits;
+    }
 }
+
+
+
+
 
