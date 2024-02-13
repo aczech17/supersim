@@ -236,7 +236,7 @@ impl CPU
     fn decode_cp1(&mut self, instruction: u32)
     {
         let opcode = instruction >> 26;
-        let opcode2 = (instruction >> 21) & 0b11111;
+        let opcode2 = ((instruction >> 21) & 0b11111) as u8;
         let ft = ((instruction >> 16) & 0b11111) as u8;
         let early_cc = ((instruction >> 18) & 0b111) as u8;
         let after_early_cc = (instruction >> 16) & 0b11;
@@ -246,6 +246,15 @@ impl CPU
         let late_cc = ((instruction >> 8) & 0b111) as u8;
         let after_late_cc = (instruction >> 6) & 0b11;
         let last = instruction & 0b111111;
+
+        let offset = (instruction & 0xFFFF) as u16;
+
+        match opcode
+        {
+            0x39 => self.swc1(ft, opcode2, offset),
+            0x31 => self.lwc1(ft, opcode2, offset),
+            _ => {},
+        }
 
         match (opcode, opcode2, fd, last)
         {
@@ -422,7 +431,16 @@ impl CPU
         };
 
         let register = self.memory_buffer.write_back_register;
-        self.write_to_reg(register, result);
+        match register
+        {
+            0..=31 => self.write_to_reg(register, result),
+            other_address =>
+            {
+                let cp1_address = (other_address - 32) as usize;
+                let data: f32 = unsafe {mem::transmute(data)};
+                self.cp1_reg[cp1_address] = data;
+            },
+        }
     }
 }
 
@@ -1170,6 +1188,42 @@ impl CPU // FP coprocessor1
         let result: f32 = unsafe {mem::transmute(op1)};
 
         self.cp1_reg[fs as usize] = result;
+    }
+
+    fn lwc1(&mut self, ft: u8, base: u8, offset: u16)
+    {
+        let offset = offset as i16;
+        let address = (self.int_reg[base as usize] as i32 + offset as i32) as u32;
+
+        let register_number = ft + 32;
+
+        self.memory_buffer = MemoryBuffer
+        {
+            address,
+            data: 0,
+            data_size: 4,
+            store: false,
+            write_back_register: register_number,
+            sign_extended: false,
+        }
+    }
+
+    fn swc1(&mut self, ft: u8, base: u8, offset: u16)
+    {
+        let data: u32 = unsafe {mem::transmute(self.cp1_reg[ft as usize])};
+
+        let offset = offset as i16;
+        let address = (self.int_reg[base as usize] as i32 + offset as i32) as u32;
+
+        self.memory_buffer = MemoryBuffer
+        {
+            address,
+            data,
+            data_size: 4,
+            store: true,
+            write_back_register: 0,
+            sign_extended: false,
+        }
     }
 
     fn abs_d(&mut self, fd: u8, fs: u8)
