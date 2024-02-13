@@ -232,6 +232,20 @@ impl CPU
         };
     }
 
+    fn decode_cp1(&mut self, instruction: u32)
+    {
+        let opcode = instruction >> 26;
+        let opcode2 = (instruction >> 21) & 0b11111;
+        let ft = (instruction >> 16) & 0b11111;
+        let early_cc = (instruction >> 18) & 0b111;
+        let after_early_cc = (instruction >> 16) & 0b11;
+        let fs = (instruction >> 11) & 0b11111;
+        let fd = (instruction >> 6) & 0b11111;
+
+        let late_cc = (instruction >> 8) & 0b111;
+        let after_late_cc = (instruction >> 4) & 0b1111;
+    }
+
     fn decode_trap_instruction(&mut self, instruction: u32)
     {
         let opcode = instruction >> 26;
