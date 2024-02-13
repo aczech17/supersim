@@ -236,14 +236,44 @@ impl CPU
     {
         let opcode = instruction >> 26;
         let opcode2 = (instruction >> 21) & 0b11111;
-        let ft = (instruction >> 16) & 0b11111;
+        let ft = ((instruction >> 16) & 0b11111) as u8;
         let early_cc = (instruction >> 18) & 0b111;
         let after_early_cc = (instruction >> 16) & 0b11;
-        let fs = (instruction >> 11) & 0b11111;
-        let fd = (instruction >> 6) & 0b11111;
+        let fs = ((instruction >> 11) & 0b11111) as u8;
+        let fd = ((instruction >> 6) & 0b11111) as u8;
 
-        let late_cc = (instruction >> 8) & 0b111;
-        let after_late_cc = (instruction >> 4) & 0b1111;
+        let late_cc = ((instruction >> 8) & 0b111) as u8;
+        let after_late_cc = (instruction >> 6) & 0b11;
+        let last = instruction & 0b111111;
+
+        match (opcode, opcode2, ft, last)
+        {
+            (0x11, 1, 0, 5) => self.abs_d(fd, fs),
+            (0x11, 0, 0, 5) => self.abs_s(fd, fs),
+            (0x11, 0x11, _, 0) => self.add_d(fd, fs, ft),
+            (0x11, 0x10, _, 0) => self.add_s(fd, fs, ft),
+            (0x11, 0x11, 0, 0xE) => self.ceil_w_d(fd, fs),
+            (0x11, 0x10, 0, 0xE) => self.ceil_w_s(fd, fs),
+            (0x11, 0x10, 0, 0x21) => self.cvt_d_s(fd, fs),
+            (0x11, 0x14, 0, 0x21) => self.cvt_d_w(fd, fs),
+            (0x11, 0x11, 0, 0x20) => self.cvt_s_d(fd, fs),
+            (0x11, 0x14, 0, 0x20) => self.cvt_s_w(fd, fs),
+
+            _ => {},
+        }
+
+        match (opcode, opcode2, after_late_cc, last)
+        {
+            (0x11, 0x11, 0, 0x32) => self.c_eq_d(late_cc, fs, ft),
+            (0x11, 0x10, 0, 0x32) => self.c_eq_s(late_cc, fs, ft),
+            (0x11, 0x11, 0, 0x3E) => self.c_le_d(late_cc, fs, ft),
+            (0x11, 0x10, 0, 0x3E) => self.c_le_s(late_cc, fs, ft),
+            (0x11, 0x11, 0, 0x3C) => self.c_lt_d(late_cc, fs, ft),
+            (0x11, 0x10, 0, 0x3C) => self.c_lt_s(late_cc, fs, ft),
+            _ => {},
+        }
+
+
     }
 
     fn decode_trap_instruction(&mut self, instruction: u32)
