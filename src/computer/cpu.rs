@@ -1302,9 +1302,185 @@ impl CPU // FP coprocessor1
         let bits: f32 = unsafe {mem::transmute(result)};
         self.cp1_reg[fd as usize] = bits;
     }
+
+    fn mov_d(&mut self, fd: u8, fs: u8)
+    {
+        let op1 = self.get_double_precision(fs);
+        self.write_to_double_register(fd, op1);
+    }
+
+    fn mov_s(&mut self, fd: u8, fs: u8)
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        self.cp1_reg[fd as usize] = op1;
+    }
+
+    fn movf_d(&mut self, fd: u8, fs: u8, cc_num: u8)
+    {
+        if self.cc[cc_num as usize] == false
+        {
+            self.mov_d(fd, fs);
+        }
+    }
+
+    fn movf_s(&mut self, fd: u8, fs: u8, cc_num: u8)
+    {
+        if self.cc[cc_num as usize] == false
+        {
+            self.mov_s(fd, fs);
+        }
+    }
+
+    fn movt_d(&mut self, fd: u8, fs: u8, cc_num: u8)
+    {
+        if self.cc[cc_num as usize] == true
+        {
+            self.mov_d(fd, fs);
+        }
+    }
+
+    fn movt_s(&mut self, fd: u8, fs: u8, cc_num: u8)
+    {
+        if self.cc[cc_num as usize] == true
+        {
+            self.mov_s(fd, fs);
+        }
+    }
+
+    fn movn_d(&mut self, fd: u8, fs: u8, rt: u8)
+    {
+        if self.cp0_reg[rt as usize] != 0
+        {
+            self.mov_d(fd, fs);
+        }
+    }
+
+    fn movn_s(&mut self, fd: u8, fs: u8, rt: u8)
+    {
+        if self.cp0_reg[rt as usize] != 0
+        {
+            self.mov_s(fd, fs);
+        }
+    }
+
+    fn movz_d(&mut self, fd: u8, fs: u8, rt: u8)
+    {
+        if self.cp0_reg[rt as usize] == 0
+        {
+            self.mov_d(fd, fs);
+        }
+    }
+
+    fn movz_s(&mut self, fd: u8, fs: u8, rt: u8)
+    {
+        if self.cp0_reg[rt as usize] == 0
+        {
+            self.mov_s(fd, fs);
+        }
+    }
+
+    fn mul_d(&mut self, fd: u8, fs: u8, ft: u8)
+    {
+        let op1 = self.get_double_precision(fs);
+        let op2 = self.get_double_precision(ft);
+
+        let result = op1 * op2;
+
+        self.write_to_double_register(fd, result);
+    }
+
+    fn mul_s(&mut self, fd: u8, fs: u8, ft: u8)
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        let op2 = self.cp1_reg[ft as usize];
+
+        let result = op1 * op2;
+
+        self.cp1_reg[fd as usize] = result;
+    }
+
+    fn neg_d(&mut self, fd: u8, fs: u8)
+    {
+        let op1 = self.get_double_precision(fs);
+        let result = -op1;
+
+        self.write_to_double_register(fd, result);
+    }
+
+    fn neg_s(&mut self, fd: u8, fs: u8)
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        let result = -op1;
+
+        self.cp1_reg[fd as usize] = result;
+    }
+
+    fn round_d(&mut self, fd: u8, fs: u8)
+    {
+        let op1 = self.get_double_precision(fs);
+        let result = op1.round() as i32;
+
+        let bits: f32 = unsafe {mem::transmute(result)};
+        self.cp1_reg[fd as usize] = bits;
+    }
+
+    fn round_s(&mut self, fd: u8, fs: u8)
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        let result = op1.round() as i32;
+
+        let bits: f32 = unsafe {mem::transmute(result)};
+        self.cp1_reg[fd as usize] = bits;
+    }
+
+    fn sqrt_d(&mut self, fd: u8, fs: u8)
+    {
+        let op1 = self.get_double_precision(fs);
+        let result = op1.sqrt();
+        self.write_to_double_register(fd, result);
+    }
+
+    fn sqrt_s(&mut self, fd: u8, fs: u8)
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        let result = op1.sqrt();
+        self.cp1_reg[fd as usize] = result;
+    }
+
+    fn sub_d(&mut self, fd: u8, fs: u8, ft: u8)
+    {
+        let op1 = self.get_double_precision(fs);
+        let op2 = self.get_double_precision(ft);
+
+        let result = op1 - op2;
+
+        self.write_to_double_register(fd, result);
+    }
+
+    fn sub_s(&mut self, fd: u8, fs: u8, ft: u8)
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        let op2 = self.cp1_reg[ft as usize];
+
+        let result = op1 - op2;
+        self.cp1_reg[fd as usize] = result;
+    }
+
+    fn trunc_d(&mut self, fd: u8, fs: u8)
+    {
+        let op1 = self.get_double_precision(fs);
+        let result = op1.trunc() as i32;
+
+        let bits: f32 = unsafe {mem::transmute(result)};
+        self.cp1_reg[fd as usize] = bits;
+    }
+
+    fn trunc_s(&mut self, fd: u8, fs: u8)
+    {
+        let op1 = self.cp1_reg[fs as usize];
+        let result = op1.trunc() as i32;
+
+        let bits: f32 = unsafe {mem::transmute(result)};
+        self.cp1_reg[fd as usize] = bits;
+    }
 }
-
-
-
-
-
