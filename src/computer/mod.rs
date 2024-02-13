@@ -42,10 +42,8 @@ impl Computer
         }
     }
 
-    fn cpu_step(&mut self)
+    fn cpu_step(&mut self, interrupt_requests: u8)
     {
-        let interrupt_requests: u8 = 0; // temporarily
-
         // FETCH
         let mem_request = self.cpu.tick(0, interrupt_requests);
         let pc = mem_request.address;
@@ -77,9 +75,10 @@ impl Computer
 
     pub fn run(&mut self)
     {
+        let interrupt_requests = 0;
         loop
         {
-            self.cpu_step();
+            self.cpu_step(interrupt_requests);
             self.video.display(&self.ram);
         }
     }
