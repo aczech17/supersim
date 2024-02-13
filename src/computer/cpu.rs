@@ -209,16 +209,19 @@ impl CPU
             return;
         }
 
+        self.decode_cp0(instruction);
+        self.decode_trap_instruction(instruction);
+        self.decode_int_instruction(instruction);
+    }
+
+    fn decode_cp0(&mut self, instruction: u32)
+    {
         let opcode = instruction >> 26;
         let rs = ((instruction >> 21) & 0b11111) as u8;
         let rt = ((instruction >> 16) & 0b11111) as u8;
         let rd = ((instruction >> 11) & 0b11111) as u8;
-        let shamt = ((instruction >> 6) & 0b11111) as u8;
         let funct = (instruction & 0b111111) as u8;
-        let imm = (instruction & 0xFFFF) as u16;
-        let address = instruction & 0x3FFFFFF;
 
-        // coprocessor 0
         match (opcode, rs, funct)
         {
             (16, 0, 0) => self.mfc0(rt, rd),
@@ -227,6 +230,14 @@ impl CPU
             // swc0?
             _ => {},
         };
+    }
+
+    fn decode_trap_instruction(&mut self, instruction: u32)
+    {
+        let opcode = instruction >> 26;
+        let rs = ((instruction >> 21) & 0b11111) as u8;
+        let rt = ((instruction >> 16) & 0b11111) as u8;
+        let imm = (instruction & 0xFFFF) as u16;
 
         // trap instructions
         match (opcode, rt, imm)
@@ -245,8 +256,19 @@ impl CPU
             (1, 0xB, _) => self.tltiu(rs, imm),
             _ => {},
         };
+    }
 
-        // integer registers
+    fn decode_int_instruction(&mut self, instruction: u32)
+    {
+        let opcode = instruction >> 26;
+        let rs = ((instruction >> 21) & 0b11111) as u8;
+        let rt = ((instruction >> 16) & 0b11111) as u8;
+        let rd = ((instruction >> 11) & 0b11111) as u8;
+        let shamt = ((instruction >> 6) & 0b11111) as u8;
+        let funct = (instruction & 0b111111) as u8;
+        let imm = (instruction & 0xFFFF) as u16;
+        let address = instruction & 0x3FFFFFF;
+
         match (opcode, funct)
         {
             (0, 0) => self.sll(rd, rt, shamt),
