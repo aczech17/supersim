@@ -17,6 +17,7 @@ pub(super) struct MemoryBuffer
     pub(super) store: bool,
     pub(super) write_back_register: u8,
     pub(super) sign_extended: bool,
+    partial_write: Option<(usize, usize)>,
 }
 
 const EXCEPTION_HANDLER_ADDRESS: u32 = 0x8000_0180; // 0x8000_0080 ?
@@ -64,6 +65,7 @@ impl CPU
             store: false,
             write_back_register: 0,
             sign_extended: false,
+            partial_write: None,
         };
 
         let mut cp0_reg = [0; 32];
@@ -117,6 +119,7 @@ impl CPU
                     store: false,
                     write_back_register: 0,
                     sign_extended: false,
+                    partial_write: None,
                 };
                 self.pc += 4;
                 self.phase = CPUPhase::DecodeAndExecute;
@@ -405,9 +408,11 @@ impl CPU
             (15, _) => self.lui(rt, imm),
             (32, _) => self.lb(rt, rs, imm),
             (33, _) => self.lh(rt, rs, imm),
-            (34, _) => self.lw(rt, rs, imm),
+            (34, _) => self.lwl(rt, rs, imm),
+            (35, _) => self.lw(rt, rs, imm),
             (36, _) => self.lbu(rt, rs, imm),
             (37, _) => self.lhu(rt, rs, imm),
+            (38, _) => self.lwr(rt, rs, imm),
             (40, _) => self.sb(rt, rs, imm),
             (41, _) => self.sh(rt, rs, imm),
             (43, _) => self.sw(rt, rs, imm),
@@ -417,6 +422,12 @@ impl CPU
 
     fn write_back(&mut self)
     {
+        if let Some(_) = self.memory_buffer.partial_write
+        {
+            self.partial_write_back();
+            return;
+        }
+
         let data = self.memory_buffer.data;
         let result = if !self.memory_buffer.sign_extended {data}
         else
@@ -441,6 +452,32 @@ impl CPU
                 self.cp1_reg[cp1_address] = data;
             },
         }
+    }
+
+    fn partial_write_back(&mut self)
+    {
+        let register_number = self.memory_buffer.write_back_register;
+        let mut content = self.int_reg[register_number as usize];
+
+        let (from, to) = self.memory_buffer.partial_write.unwrap();
+        if from == 0 // left write
+        {
+            let shift = 3 - to;
+            let word_part = (self.memory_buffer.data) << shift;
+            let mask: u32 = !(0xFFFFFFFF << shift);
+
+            content = (content & mask) | word_part;
+        }
+        else // right write
+        {
+            let shift = from;
+            let word_part = (self.memory_buffer.data) >> shift;
+            let mask: u32 = !(0xFFFFFFFF >> shift);
+
+            content = (content & mask) | word_part;
+        }
+
+        self.write_to_reg(register_number, content);
     }
 }
 
@@ -843,6 +880,7 @@ impl CPU // opcodes
             store: false,
             write_back_register: rt,
             sign_extended: false,
+            partial_write: None,
         };
     }
 
@@ -857,6 +895,7 @@ impl CPU // opcodes
             store: false,
             write_back_register: rt,
             sign_extended: true,
+            partial_write: None,
         }
     }
 
@@ -871,6 +910,7 @@ impl CPU // opcodes
             store: false,
             write_back_register: rt,
             sign_extended: true, // whatever
+            partial_write: None,
         }
     }
 
@@ -885,6 +925,7 @@ impl CPU // opcodes
             store: false,
             write_back_register: rt,
             sign_extended: false,
+            partial_write: None,
         }
     }
 
@@ -899,6 +940,7 @@ impl CPU // opcodes
             store: false,
             write_back_register: rt,
             sign_extended: false,
+            partial_write: None,
         }
     }
 
@@ -915,6 +957,7 @@ impl CPU // opcodes
             store: true,
             write_back_register: 0,
             sign_extended: false,
+            partial_write: None,
         }
     }
 
@@ -931,6 +974,7 @@ impl CPU // opcodes
             store: true,
             write_back_register: 0,
             sign_extended: false,
+            partial_write: None,
         }
     }
 
@@ -947,6 +991,47 @@ impl CPU // opcodes
             store: true,
             write_back_register: 0,
             sign_extended: false,
+            partial_write: None,
+        }
+    }
+
+    fn lwl(&mut self, rt: u8, base: u8, offset: u16)
+    {
+        let address = (self.int_reg[base as usize] as i32 + (offset as i16 as i32)) as u32;
+        let word_address = address - address % 4;
+
+        let bytes_count = (4 - address % 4) as usize;
+        let partial_write = Some((0, bytes_count - 1));
+
+        self.memory_buffer = MemoryBuffer
+        {
+            address: word_address,
+            data: 0,
+            data_size: 4,
+            store: false,
+            write_back_register: rt,
+            sign_extended: false,
+            partial_write,
+        }
+    }
+
+    fn lwr(&mut self, rt: u8, base: u8, offset: u16)
+    {
+        let address = (self.int_reg[base as usize] as i32 + (offset as i16 as i32)) as u32;
+        let word_address = address - address % 4;
+
+        let bytes_count = (address % 4 + 1) as usize;
+        let partial_write = Some((4 - bytes_count, 3));
+
+        self.memory_buffer = MemoryBuffer
+        {
+            address: word_address,
+            data: 0,
+            data_size: 4,
+            store: false,
+            write_back_register: rt,
+            sign_extended: false,
+            partial_write,
         }
     }
 
@@ -1205,6 +1290,7 @@ impl CPU // FP coprocessor1
             store: false,
             write_back_register: register_number,
             sign_extended: false,
+            partial_write: None,
         }
     }
 
@@ -1223,6 +1309,7 @@ impl CPU // FP coprocessor1
             store: true,
             write_back_register: 0,
             sign_extended: false,
+            partial_write: None,
         }
     }
 
